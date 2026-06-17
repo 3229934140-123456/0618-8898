@@ -306,9 +306,11 @@ const Workflows: React.FC = () => {
   const {
     repositories,
     workflows,
+    workflowRuns,
     selectedRepo,
     setRepositories,
     setWorkflows,
+    setWorkflowRuns,
     updateWorkflowRun,
     setSelectedRepo,
     setLoading,
@@ -333,8 +335,12 @@ const Workflows: React.FC = () => {
 
         for (const repo of repos) {
           const [owner, name] = repo.fullName.split('/');
-          const wfs = await apiService.getWorkflows(owner, name);
+          const [wfs, runs] = await Promise.all([
+            apiService.getWorkflows(owner, name),
+            apiService.getWorkflowRuns(owner, name),
+          ]);
           setWorkflows(repo.fullName, wfs);
+          setWorkflowRuns(repo.fullName, runs);
         }
       } catch (error) {
         console.error('Failed to load workflows:', error);
@@ -344,7 +350,7 @@ const Workflows: React.FC = () => {
     };
 
     loadData();
-  }, [setRepositories, setWorkflows, setLoading]);
+  }, [setRepositories, setWorkflows, setWorkflowRuns, setLoading]);
 
   useEffect(() => {
     if (repositories.length > 0) {
@@ -361,8 +367,8 @@ const Workflows: React.FC = () => {
 
         if (run.repoFullName) {
           useDashboardStore.setState((state) => {
-            const newMap = new Map(state.workflows);
-            const repoWfs = newMap.get(run.repoFullName);
+            const newWfMap = new Map(state.workflows);
+            const repoWfs = newWfMap.get(run.repoFullName);
             if (repoWfs) {
               const updatedWfs = repoWfs.map((wf) => {
                 if (wf.lastRun && wf.lastRun.id === run.id) {
@@ -376,9 +382,24 @@ const Workflows: React.FC = () => {
                 }
                 return wf;
               });
-              newMap.set(run.repoFullName, updatedWfs);
+              newWfMap.set(run.repoFullName, updatedWfs);
             }
-            return { workflows: newMap };
+
+            const newRunMap = new Map(state.workflowRuns);
+            const repoRuns = newRunMap.get(run.repoFullName) || [];
+            const runIdx = repoRuns.findIndex((r) => r.id === run.id);
+            let updatedRuns;
+            if (runIdx >= 0) {
+              updatedRuns = [...repoRuns];
+              updatedRuns[runIdx] = { ...run };
+            } else {
+              updatedRuns = [{ ...run }, ...repoRuns];
+            }
+            newRunMap.set(run.repoFullName, updatedRuns.sort(
+              (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+            ));
+
+            return { workflows: newWfMap, workflowRuns: newRunMap };
           });
         }
       }
@@ -398,7 +419,7 @@ const Workflows: React.FC = () => {
     setTriggeringId(workflow.id);
     setError('workflow-trigger', null);
 
-    const optimisticRun: WorkflowRun = {
+    const optimisticRun: WorkflowRun & { repoFullName: string } = {
       id: Date.now(),
       name: workflow.name,
       status: 'queued',
@@ -406,6 +427,7 @@ const Workflows: React.FC = () => {
       htmlUrl: `https://github.com/${repoFullName}/actions`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      repoFullName,
     };
 
     const currentWfs = workflows.get(repoFullName) || [];
@@ -414,12 +436,15 @@ const Workflows: React.FC = () => {
     );
     setWorkflows(repoFullName, optimisticWfs);
 
+    const currentRuns = workflowRuns.get(repoFullName) || [];
+    setWorkflowRuns(repoFullName, [optimisticRun, ...currentRuns]);
+
     try {
       const [owner, name] = repoFullName.split('/');
       const result = await apiService.triggerWorkflow(owner, name, workflow.id, ref, inputs);
       setTriggerModal(null);
 
-      const newRun: WorkflowRun = {
+      const newRun: WorkflowRun & { repoFullName: string } = {
         id: result.id,
         name: result.name,
         status: result.status,
@@ -427,12 +452,18 @@ const Workflows: React.FC = () => {
         htmlUrl: result.htmlUrl,
         createdAt: result.createdAt,
         updatedAt: result.updatedAt,
+        repoFullName: result.repoFullName || repoFullName,
       };
 
       const updatedWfs = currentWfs.map((wf) =>
         wf.id === workflow.id ? { ...wf, lastRun: newRun } : wf
       );
       setWorkflows(repoFullName, updatedWfs);
+
+      const updatedRuns = currentRuns.map((r) =>
+        r.id === optimisticRun.id ? newRun : r
+      );
+      setWorkflowRuns(repoFullName, updatedRuns);
     } catch (error: any) {
       console.error('Failed to trigger workflow:', error);
       setError('workflow-trigger', error.message || '触发工作流失败');
@@ -440,6 +471,9 @@ const Workflows: React.FC = () => {
         wf.id === workflow.id ? { ...wf, lastRun: workflow.lastRun } : wf
       );
       setWorkflows(repoFullName, revertedWfs);
+
+      const revertedRuns = currentRuns.filter((r) => r.id !== optimisticRun.id);
+      setWorkflowRuns(repoFullName, revertedRuns);
     } finally {
       setTriggeringId(null);
     }
@@ -450,8 +484,12 @@ const Workflows: React.FC = () => {
     const [owner, name] = selectedRepo.split('/');
     setLoading('workflows-refresh', true);
     try {
-      const wfs = await apiService.getWorkflows(owner, name);
+      const [wfs, runs] = await Promise.all([
+        apiService.getWorkflows(owner, name),
+        apiService.getWorkflowRuns(owner, name),
+      ]);
       setWorkflows(selectedRepo, wfs);
+      setWorkflowRuns(selectedRepo, runs);
     } catch (error) {
       console.error('Failed to refresh workflows:', error);
     } finally {
@@ -460,6 +498,7 @@ const Workflows: React.FC = () => {
   };
 
   const triggerError = getError('workflow-trigger');
+  const currentRuns = displayRepo ? workflowRuns.get(displayRepo) || [] : [];
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -503,24 +542,89 @@ const Workflows: React.FC = () => {
           <Loader2 className="w-8 h-8 text-brand-primary animate-spin" />
         </div>
       ) : (
-        <div className="grid gap-4">
-          {currentWorkflows.map((workflow) => (
-            <WorkflowCard
-              key={workflow.id}
-              workflow={workflow}
-              repoFullName={displayRepo}
-              onTrigger={() => setTriggerModal({ workflow, repoFullName: displayRepo })}
-              isTriggering={triggeringId === workflow.id}
-            />
-          ))}
+        <>
+          <div>
+            <h2 className="text-lg font-semibold text-white mb-4">工作流</h2>
+            <div className="grid gap-4">
+              {currentWorkflows.map((workflow) => (
+                <WorkflowCard
+                  key={workflow.id}
+                  workflow={workflow}
+                  repoFullName={displayRepo}
+                  onTrigger={() => setTriggerModal({ workflow, repoFullName: displayRepo })}
+                  isTriggering={triggeringId === workflow.id}
+                />
+              ))}
 
-          {currentWorkflows.length === 0 && (
-            <div className="text-center py-20 text-gray-500">
-              <PlayCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>暂无可用工作流</p>
+              {currentWorkflows.length === 0 && (
+                <div className="text-center py-20 text-gray-500">
+                  <PlayCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>暂无可用工作流</p>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+
+          <div>
+            <h2 className="text-lg font-semibold text-white mb-4">最近运行</h2>
+            <div className="space-y-3">
+              {currentRuns.map((run) => (
+                <div
+                  key={run.id}
+                  className={cn(
+                    'rounded-xl border p-4 flex items-center justify-between',
+                    getStatusColor(run.status, run.conclusion)
+                  )}
+                >
+                  <div className="flex items-center gap-4">
+                    {getStatusIcon(run.status, run.conclusion)}
+                    <div>
+                      <p className="text-sm font-medium text-white">
+                        #{run.id} · {run.name}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {formatDate(run.createdAt)} · {formatDistanceToNow(run.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={cn(
+                        'px-2.5 py-1 rounded-full text-xs font-medium',
+                        run.status === 'in_progress'
+                          ? 'bg-status-running/20 text-status-running'
+                          : run.conclusion === 'success'
+                          ? 'bg-status-success/20 text-status-success'
+                          : run.conclusion === 'failure'
+                          ? 'bg-status-failure/20 text-status-failure'
+                          : 'bg-gray-500/20 text-gray-400'
+                      )}
+                    >
+                      {getStatusText(run.status, run.conclusion)}
+                    </span>
+                    {run.htmlUrl && (
+                      <a
+                        href={run.htmlUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                      >
+                        <ExternalLink className="w-4 h-4 text-gray-400" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {currentRuns.length === 0 && (
+                <div className="text-center py-12 text-gray-500">
+                  <Clock className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                  <p>暂无运行记录</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {triggerModal && (

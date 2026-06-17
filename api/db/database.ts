@@ -205,26 +205,29 @@ class InMemoryDatabase {
       });
     }
 
-    const allRuns = [...this.workflowRuns].sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
-
     return workflows.map(wf => {
-      const latestRun = allRuns.find(r => r.name === wf.name);
+      const repoId = Math.floor(wf.id / 10);
+      const repo = this.repositories.find(r => r.id === repoId);
+      const repoName = repo?.fullName || '';
+
+      const repoRuns = this.workflowRuns.filter((r: any) => r.repoFullName === repoName);
+      const sortedRuns = [...repoRuns].sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+      const latestRun = sortedRuns.find(r => r.name === wf.name);
+
       if (latestRun) {
-        return { ...wf, lastRun: latestRun as any };
+        const { repoFullName: _rfn, ...rest } = latestRun as any;
+        return { ...wf, lastRun: rest as any };
       }
       return wf;
     });
   }
 
-  getWorkflowRuns(repoFullName?: string): WorkflowRun[] {
-    let runs = this.workflowRuns;
+  getWorkflowRuns(repoFullName?: string): (WorkflowRun & { repoFullName: string })[] {
+    let runs = this.workflowRuns as (WorkflowRun & { repoFullName: string })[];
     if (repoFullName) {
-      const repo = this.repositories.find(r => r.fullName === repoFullName);
-      if (repo) {
-        runs = runs.filter(r => r.id >= repo.id * 100 && r.id < (repo.id + 1) * 100);
-      }
+      runs = runs.filter(r => r.repoFullName === repoFullName);
     }
     return runs.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }

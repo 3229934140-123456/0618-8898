@@ -240,7 +240,7 @@ router.post('/webhook/github', async (req: Request, res: Response) => {
       secret = '';
     }
 
-    if (secret && signature) {
+    if (secret) {
       let rawBody = '';
       try {
         rawBody = (req as any).rawBody;
@@ -252,17 +252,33 @@ router.post('/webhook/github', async (req: Request, res: Response) => {
         rawBody = JSON.stringify(req.body || {});
       }
 
+      if (!signature) {
+        console.warn(`[Webhook] Missing signature header for ${event} (${deliveryId})`);
+        return res.status(403).json({ error: 'Missing signature' });
+      }
+
+      if (!signature.startsWith('sha256=')) {
+        console.warn(`[Webhook] Invalid signature format for ${event} (${deliveryId}): expected sha256= prefix`);
+        return res.status(403).json({ error: 'Invalid signature format' });
+      }
+
+      const sigHex = signature.slice(7);
+      if (sigHex.length !== 64 || !/^[a-fA-F0-9]+$/.test(sigHex)) {
+        console.warn(`[Webhook] Invalid signature format for ${event} (${deliveryId}): invalid hex length or characters`);
+        return res.status(403).json({ error: 'Invalid signature format' });
+      }
+
       let valid = false;
       try {
         valid = verifySignature(rawBody, signature, secret);
       } catch (verifyError) {
-        console.error('[Webhook] Signature verification threw exception:', verifyError);
+        console.error(`[Webhook] Signature verification threw exception for ${event} (${deliveryId}):`, verifyError);
         valid = false;
       }
 
       if (!valid) {
-        console.warn(`[Webhook] Signature verification failed for ${event} (${deliveryId})`);
-        return res.status(403).json({ error: 'Invalid signature' });
+        console.warn(`[Webhook] Signature mismatch for ${event} (${deliveryId})`);
+        return res.status(403).json({ error: 'Signature mismatch' });
       }
     }
 

@@ -285,14 +285,15 @@ const generateWorkflows = (): Workflow[] => {
   return repositories.flatMap((repo, repoIdx) =>
     workflowConfigs.map((wf, wfIdx) => {
       const now = new Date();
-      const lastRun: WorkflowRun = {
+      const lastRun: WorkflowRun & { repoFullName: string } = {
         id: repoIdx * 100 + wfIdx + 1,
         name: wf.name,
         status: wfIdx === 0 ? 'in_progress' : 'completed',
         conclusion: wfIdx === 0 ? null : (wfIdx === 2 ? 'failure' : 'success'),
         htmlUrl: `https://github.com/${repo.fullName}/actions/runs/${repoIdx * 100 + wfIdx + 1}`,
         createdAt: new Date(now.getTime() - 3600000).toISOString(),
-        updatedAt: wfIdx === 0 ? now.toISOString() : new Date(now.getTime() - 1800000).toISOString()
+        updatedAt: wfIdx === 0 ? now.toISOString() : new Date(now.getTime() - 1800000).toISOString(),
+        repoFullName: repo.fullName
       };
 
       return {
