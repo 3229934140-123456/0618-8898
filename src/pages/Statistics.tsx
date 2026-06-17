@@ -136,16 +136,50 @@ const Statistics: React.FC = () => {
     }
   }, [selectedRepo, period, repositories.length, setDeploymentStats, setSuccessRateStats, setLoading]);
 
+  const isAllRepos = !selectedRepo;
+
   const chartData = useMemo(() => {
-    const seenPeriods = new Set<string>();
-    return deploymentStats
-      .filter((s) => {
-        if (seenPeriods.has(s.period)) return false;
-        seenPeriods.add(s.period);
-        return true;
-      })
+    const periodMap = new Map<string, {
+      deploymentCount: number;
+      successCount: number;
+      failureCount: number;
+      totalSuccessRate: number;
+      totalDuration: number;
+      repoCount: number;
+    }>();
+
+    deploymentStats.forEach((s) => {
+      const existing = periodMap.get(s.period) || {
+        deploymentCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        totalSuccessRate: 0,
+        totalDuration: 0,
+        repoCount: 0,
+      };
+      existing.deploymentCount += s.deploymentCount;
+      existing.successCount += s.successCount;
+      existing.failureCount += s.failureCount;
+      existing.totalSuccessRate += s.successRate;
+      existing.totalDuration += s.averageDurationSeconds;
+      existing.repoCount += 1;
+      periodMap.set(s.period, existing);
+    });
+
+    return Array.from(periodMap.entries())
+      .map(([period, agg]) => ({
+        period,
+        deploymentCount: agg.deploymentCount,
+        successCount: agg.successCount,
+        failureCount: agg.failureCount,
+        successRate:
+          agg.deploymentCount > 0
+            ? Math.round((agg.successCount / agg.deploymentCount) * 10000) / 100
+            : Math.round((agg.totalSuccessRate / agg.repoCount) * 100) / 100,
+        averageDurationSeconds: Math.round(agg.totalDuration / agg.repoCount),
+      }))
       .sort((a, b) => a.period.localeCompare(b.period));
-  }, [deploymentStats]);
+  }, [deploymentStats, isAllRepos]);
 
   const summaryStats = useMemo(() => {
     if (chartData.length === 0) {
@@ -162,8 +196,12 @@ const Statistics: React.FC = () => {
     const totalDeployments = chartData.reduce((acc, s) => acc + s.deploymentCount, 0);
     const totalSuccess = chartData.reduce((acc, s) => acc + s.successCount, 0);
     const totalFailure = chartData.reduce((acc, s) => acc + s.failureCount, 0);
-    const avgSuccessRate = chartData.reduce((acc, s) => acc + s.successRate, 0) / chartData.length;
-    const avgDuration = chartData.reduce((acc, s) => acc + s.averageDurationSeconds, 0) / chartData.length;
+    const avgSuccessRate =
+      totalDeployments > 0
+        ? Math.round((totalSuccess / totalDeployments) * 10000) / 100
+        : chartData.reduce((acc, s) => acc + s.successRate, 0) / chartData.length;
+    const avgDuration =
+      chartData.reduce((acc, s) => acc + s.averageDurationSeconds, 0) / chartData.length;
 
     let daysInPeriod = 7;
     switch (period) {

@@ -228,15 +228,39 @@ router.get('/statistics/success-rate', (req: Request, res: Response<ApiResponse<
 
 router.post('/webhook/github', async (req: Request, res: Response) => {
   try {
-    const signature = req.headers['x-hub-signature-256'] as string;
-    const event = req.headers['x-github-event'] as string;
-    const deliveryId = req.headers['x-github-delivery'] as string;
+    const signature = (req.headers['x-hub-signature-256'] as string) || '';
+    const event = (req.headers['x-github-event'] as string) || '';
+    const deliveryId = (req.headers['x-github-delivery'] as string) || '';
 
-    const secret = db.getConfig('webhook_secret') || '';
+    let secret = '';
+    try {
+      secret = db.getConfig('webhook_secret') || '';
+    } catch (configError) {
+      console.error('[Webhook] Failed to read webhook_secret config:', configError);
+      secret = '';
+    }
 
     if (secret && signature) {
-      const rawBody = (req as any).rawBody || JSON.stringify(req.body);
-      if (!verifySignature(rawBody, signature, secret)) {
+      let rawBody = '';
+      try {
+        rawBody = (req as any).rawBody;
+        if (typeof rawBody !== 'string') {
+          rawBody = JSON.stringify(req.body || {});
+        }
+      } catch (bodyError) {
+        console.error('[Webhook] Failed to read raw body:', bodyError);
+        rawBody = JSON.stringify(req.body || {});
+      }
+
+      let valid = false;
+      try {
+        valid = verifySignature(rawBody, signature, secret);
+      } catch (verifyError) {
+        console.error('[Webhook] Signature verification threw exception:', verifyError);
+        valid = false;
+      }
+
+      if (!valid) {
         console.warn(`[Webhook] Signature verification failed for ${event} (${deliveryId})`);
         return res.status(403).json({ error: 'Invalid signature' });
       }
@@ -249,6 +273,9 @@ router.post('/webhook/github', async (req: Request, res: Response) => {
     res.json({ success: true, event, deliveryId, result });
   } catch (error) {
     console.error('[Webhook] Error:', error);
+    if ((error as any).message?.includes('signature') || (error as any).message?.includes('Invalid')) {
+      return res.status(403).json({ error: 'Invalid signature' });
+    }
     res.status(500).json({ success: false, error: (error as Error).message });
   }
 });

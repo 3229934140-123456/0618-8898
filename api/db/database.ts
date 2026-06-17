@@ -197,14 +197,25 @@ class InMemoryDatabase {
   }
 
   getWorkflows(repoFullName?: string): Workflow[] {
-    let workflows = mockWorkflows;
+    let workflows = [...mockWorkflows];
     if (repoFullName) {
       workflows = workflows.filter(wf => {
         const repo = this.repositories.find(r => r.id === Math.floor(wf.id / 10));
         return repo?.fullName === repoFullName;
       });
     }
-    return workflows;
+
+    const allRuns = [...this.workflowRuns].sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+
+    return workflows.map(wf => {
+      const latestRun = allRuns.find(r => r.name === wf.name);
+      if (latestRun) {
+        return { ...wf, lastRun: latestRun as any };
+      }
+      return wf;
+    });
   }
 
   getWorkflowRuns(repoFullName?: string): WorkflowRun[] {
@@ -224,7 +235,7 @@ class InMemoryDatabase {
       this.workflowRuns[idx] = { ...this.workflowRuns[idx], ...run };
       return this.workflowRuns[idx];
     }
-    const newRun: WorkflowRun = { ...run };
+    const newRun: any = { ...run };
     this.workflowRuns.unshift(newRun);
     return newRun;
   }

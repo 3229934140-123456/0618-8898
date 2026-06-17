@@ -9,9 +9,24 @@ interface WebhookEvent {
 }
 
 export const verifySignature = (payload: string, signatureHeader: string, secret: string): boolean => {
-  const hmac = crypto.createHmac('sha256', secret);
-  const digest = `sha256=${hmac.update(payload).digest('hex')}`;
-  return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signatureHeader));
+  try {
+    if (!payload || typeof payload !== 'string') return false;
+    if (!signatureHeader || typeof signatureHeader !== 'string' || signatureHeader.length < 8) return false;
+    if (!secret || typeof secret !== 'string') return false;
+
+    const hmac = crypto.createHmac('sha256', secret);
+    const digest = `sha256=${hmac.update(payload).digest('hex')}`;
+
+    const digestBuf = Buffer.from(digest);
+    const sigBuf = Buffer.from(signatureHeader);
+
+    if (digestBuf.length !== sigBuf.length) return false;
+
+    return crypto.timingSafeEqual(digestBuf, sigBuf);
+  } catch (error) {
+    console.error('[Webhook] Signature verification error:', error);
+    return false;
+  }
 };
 
 export const handlePullRequestEvent = async (payload: any): Promise<PullRequest | null> => {
