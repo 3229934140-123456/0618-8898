@@ -120,7 +120,7 @@ const Statistics: React.FC = () => {
       try {
         const [deployStats, rateStats] = await Promise.all([
           apiService.getDeploymentStats(selectedRepo || undefined, period),
-          apiService.getSuccessRate(selectedRepo || undefined),
+          apiService.getSuccessRate(selectedRepo || undefined, period),
         ]);
         setDeploymentStats(deployStats);
         setSuccessRateStats(rateStats);
@@ -136,17 +136,19 @@ const Statistics: React.FC = () => {
     }
   }, [selectedRepo, period, repositories.length, setDeploymentStats, setSuccessRateStats, setLoading]);
 
-  const dailyStats = useMemo(() => {
-    return deploymentStats.filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s.period));
+  const chartData = useMemo(() => {
+    const seenPeriods = new Set<string>();
+    return deploymentStats
+      .filter((s) => {
+        if (seenPeriods.has(s.period)) return false;
+        seenPeriods.add(s.period);
+        return true;
+      })
+      .sort((a, b) => a.period.localeCompare(b.period));
   }, [deploymentStats]);
 
   const summaryStats = useMemo(() => {
-    const monthlyStats = deploymentStats.filter((s) => /^\d{4}-\d{2}$/.test(s.period));
-    const weeklyStats = deploymentStats.filter((s) => /^\d{4}-W\d{2}$/.test(s.period));
-
-    const targetStats = monthlyStats.length > 0 ? monthlyStats : weeklyStats.length > 0 ? weeklyStats : dailyStats;
-
-    if (targetStats.length === 0) {
+    if (chartData.length === 0) {
       return {
         totalDeployments: 0,
         totalSuccess: 0,
@@ -157,14 +159,20 @@ const Statistics: React.FC = () => {
       };
     }
 
-    const totalDeployments = targetStats.reduce((acc, s) => acc + s.deploymentCount, 0);
-    const totalSuccess = targetStats.reduce((acc, s) => acc + s.successCount, 0);
-    const totalFailure = targetStats.reduce((acc, s) => acc + s.failureCount, 0);
-    const avgSuccessRate = targetStats.reduce((acc, s) => acc + s.successRate, 0) / targetStats.length;
-    const avgDuration = targetStats.reduce((acc, s) => acc + s.averageDurationSeconds, 0) / targetStats.length;
-    const deploymentsPerDay = dailyStats.length > 0
-      ? dailyStats.reduce((acc, s) => acc + s.deploymentCount, 0) / dailyStats.length
-      : 0;
+    const totalDeployments = chartData.reduce((acc, s) => acc + s.deploymentCount, 0);
+    const totalSuccess = chartData.reduce((acc, s) => acc + s.successCount, 0);
+    const totalFailure = chartData.reduce((acc, s) => acc + s.failureCount, 0);
+    const avgSuccessRate = chartData.reduce((acc, s) => acc + s.successRate, 0) / chartData.length;
+    const avgDuration = chartData.reduce((acc, s) => acc + s.averageDurationSeconds, 0) / chartData.length;
+
+    let daysInPeriod = 7;
+    switch (period) {
+      case 'week': daysInPeriod = 7; break;
+      case 'month': daysInPeriod = 30; break;
+      case 'quarter': daysInPeriod = 91; break;
+      case 'year': daysInPeriod = 365; break;
+    }
+    const deploymentsPerDay = totalDeployments / daysInPeriod;
 
     return {
       totalDeployments,
@@ -174,7 +182,7 @@ const Statistics: React.FC = () => {
       avgDuration,
       deploymentsPerDay,
     };
-  }, [deploymentStats, dailyStats]);
+  }, [chartData, period]);
 
   const pieData = useMemo(() => {
     if (summaryStats.totalDeployments === 0) return [];
@@ -185,27 +193,27 @@ const Statistics: React.FC = () => {
   }, [summaryStats]);
 
   const deploymentChartData = useMemo(() => {
-    return dailyStats.map((s) => ({
+    return chartData.map((s) => ({
       date: s.period,
       部署次数: s.deploymentCount,
       成功: s.successCount,
       失败: s.failureCount,
     }));
-  }, [dailyStats]);
+  }, [chartData]);
 
   const successRateChartData = useMemo(() => {
-    return dailyStats.map((s) => ({
+    return chartData.map((s) => ({
       date: s.period,
       成功率: s.successRate,
     }));
-  }, [dailyStats]);
+  }, [chartData]);
 
   const handleRefresh = async () => {
     setLoading('statistics-refresh', true);
     try {
       const [deployStats, rateStats] = await Promise.all([
         apiService.getDeploymentStats(selectedRepo || undefined, period),
-        apiService.getSuccessRate(selectedRepo || undefined),
+        apiService.getSuccessRate(selectedRepo || undefined, period),
       ]);
       setDeploymentStats(deployStats);
       setSuccessRateStats(rateStats);

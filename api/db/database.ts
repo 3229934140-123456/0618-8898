@@ -24,7 +24,15 @@ interface ConfigEntry {
   updatedAt: string;
 }
 
+function getISOWeek(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
 class InMemoryDatabase {
+
   private repositories: Repository[] = [...mockRepositories];
   private pullRequests: PullRequest[] = [...mockPullRequests];
   private pipelineRuns: PipelineRun[] = [...mockPipelineRuns];
@@ -229,15 +237,22 @@ class InMemoryDatabase {
       ? this.repositories.filter(r => r.fullName === repoFullName)
       : this.repositories;
 
-    const generateDailyStats = (days: number, labelPrefix: string) => {
+    const seededRandom = (seed: number) => {
+      const x = Math.sin(seed) * 10000;
+      return x - Math.floor(x);
+    };
+
+    const generateDailyStats = (days: number) => {
       for (let i = days - 1; i >= 0; i--) {
         const date = new Date(now);
         date.setDate(date.getDate() - i);
         const dateStr = date.toISOString().split('T')[0];
         
-        targetRepos.forEach(repo => {
-          const deploymentCount = Math.floor(Math.random() * 8) + 2;
-          const failureCount = Math.floor(deploymentCount * (Math.random() * 0.2 + 0.05));
+        targetRepos.forEach((repo, repoIdx) => {
+          const seed = i * 31 + repoIdx * 7;
+          const deploymentCount = Math.floor(seededRandom(seed) * 8) + 2;
+          const failureRatio = seededRandom(seed + 1) * 0.15 + 0.05;
+          const failureCount = Math.floor(deploymentCount * failureRatio);
           const successCount = deploymentCount - failureCount;
           
           result.push({
@@ -248,7 +263,7 @@ class InMemoryDatabase {
             successCount,
             failureCount,
             successRate: Math.round((successCount / deploymentCount) * 10000) / 100,
-            averageDurationSeconds: Math.floor(Math.random() * 300) + 120
+            averageDurationSeconds: Math.floor(seededRandom(seed + 2) * 300) + 120
           });
         });
       }
@@ -258,12 +273,14 @@ class InMemoryDatabase {
       for (let i = weeks - 1; i >= 0; i--) {
         const weekStart = new Date(now);
         weekStart.setDate(weekStart.getDate() - i * 7);
-        const weekNum = Math.ceil((weekStart.getDate() + new Date(weekStart.getFullYear(), weekStart.getMonth(), 1).getDay()) / 7);
-        const periodStr = `${weekStart.getFullYear()}-W${weekNum.toString().padStart(2, '0')}`;
+        const isoWeek = getISOWeek(weekStart);
+        const periodStr = `${weekStart.getFullYear()}-W${isoWeek.toString().padStart(2, '0')}`;
         
-        targetRepos.forEach(repo => {
-          const deploymentCount = Math.floor(Math.random() * 30) + 15;
-          const failureCount = Math.floor(deploymentCount * (Math.random() * 0.2 + 0.05));
+        targetRepos.forEach((repo, repoIdx) => {
+          const seed = i * 37 + repoIdx * 13;
+          const deploymentCount = Math.floor(seededRandom(seed) * 30) + 15;
+          const failureRatio = seededRandom(seed + 1) * 0.15 + 0.05;
+          const failureCount = Math.floor(deploymentCount * failureRatio);
           const successCount = deploymentCount - failureCount;
           
           result.push({
@@ -274,7 +291,7 @@ class InMemoryDatabase {
             successCount,
             failureCount,
             successRate: Math.round((successCount / deploymentCount) * 10000) / 100,
-            averageDurationSeconds: Math.floor(Math.random() * 300) + 120
+            averageDurationSeconds: Math.floor(seededRandom(seed + 2) * 300) + 120
           });
         });
       }
@@ -285,9 +302,11 @@ class InMemoryDatabase {
         const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const periodStr = `${monthDate.getFullYear()}-${(monthDate.getMonth() + 1).toString().padStart(2, '0')}`;
         
-        targetRepos.forEach(repo => {
-          const deploymentCount = Math.floor(Math.random() * 80) + 40;
-          const failureCount = Math.floor(deploymentCount * (Math.random() * 0.2 + 0.05));
+        targetRepos.forEach((repo, repoIdx) => {
+          const seed = i * 41 + repoIdx * 17;
+          const deploymentCount = Math.floor(seededRandom(seed) * 80) + 40;
+          const failureRatio = seededRandom(seed + 1) * 0.15 + 0.05;
+          const failureCount = Math.floor(deploymentCount * failureRatio);
           const successCount = deploymentCount - failureCount;
           
           result.push({
@@ -298,7 +317,7 @@ class InMemoryDatabase {
             successCount,
             failureCount,
             successRate: Math.round((successCount / deploymentCount) * 10000) / 100,
-            averageDurationSeconds: Math.floor(Math.random() * 300) + 120
+            averageDurationSeconds: Math.floor(seededRandom(seed + 2) * 300) + 120
           });
         });
       }
@@ -311,9 +330,11 @@ class InMemoryDatabase {
         const q = ((currentQuarter % 4) + 4) % 4 + 1;
         const periodStr = `${year}-Q${q}`;
         
-        targetRepos.forEach(repo => {
-          const deploymentCount = Math.floor(Math.random() * 200) + 100;
-          const failureCount = Math.floor(deploymentCount * (Math.random() * 0.2 + 0.05));
+        targetRepos.forEach((repo, repoIdx) => {
+          const seed = i * 53 + repoIdx * 23;
+          const deploymentCount = Math.floor(seededRandom(seed) * 200) + 100;
+          const failureRatio = seededRandom(seed + 1) * 0.15 + 0.05;
+          const failureCount = Math.floor(deploymentCount * failureRatio);
           const successCount = deploymentCount - failureCount;
           
           result.push({
@@ -324,7 +345,7 @@ class InMemoryDatabase {
             successCount,
             failureCount,
             successRate: Math.round((successCount / deploymentCount) * 10000) / 100,
-            averageDurationSeconds: Math.floor(Math.random() * 300) + 120
+            averageDurationSeconds: Math.floor(seededRandom(seed + 2) * 300) + 120
           });
         });
       }
@@ -332,24 +353,19 @@ class InMemoryDatabase {
 
     switch (period) {
       case 'week':
-        generateDailyStats(7, 'day');
+        generateDailyStats(7);
         break;
       case 'month':
-        generateDailyStats(30, 'day');
-        generateWeeklyStats(4);
+        generateDailyStats(30);
         break;
       case 'quarter':
         generateWeeklyStats(13);
-        generateMonthlyStats(3);
         break;
       case 'year':
         generateMonthlyStats(12);
-        generateQuarterlyStats(4);
         break;
       default:
-        generateDailyStats(7, 'day');
-        generateWeeklyStats(4);
-        generateMonthlyStats(3);
+        generateDailyStats(7);
     }
 
     return result;

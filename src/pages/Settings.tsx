@@ -102,10 +102,10 @@ const Settings: React.FC = () => {
       sensitive: true,
     },
     {
-      key: 'github_webhook_secret',
-      value: config.github_webhook_secret ?? '',
+      key: 'webhook_secret',
+      value: config.webhook_secret ?? '',
       label: 'Webhook Secret',
-      description: '用于验证GitHub Webhook请求的密钥',
+      description: '用于验证GitHub Webhook请求的密钥，保存后立即生效',
       icon: <Webhook className="w-5 h-5" />,
       sensitive: true,
     },

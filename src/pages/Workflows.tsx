@@ -355,27 +355,36 @@ const Workflows: React.FC = () => {
 
   useEffect(() => {
     const unsubscribe = subscribe((event) => {
-      console.log('[Workflows] Received event:', event.type, event.data);
       if (event.type === 'workflow:updated') {
-        updateWorkflowRun(event.data);
-        
         const run = event.data;
+        updateWorkflowRun(run);
+
         if (run.repoFullName) {
-          const currentWfs = workflows.get(run.repoFullName);
-          if (currentWfs) {
-            const updatedWfs = currentWfs.map((wf) => {
-              if (wf.lastRun && wf.lastRun.id === run.id) {
-                return { ...wf, lastRun: run };
-              }
-              return wf;
-            });
-            setWorkflows(run.repoFullName, updatedWfs);
-          }
+          useDashboardStore.setState((state) => {
+            const newMap = new Map(state.workflows);
+            const repoWfs = newMap.get(run.repoFullName);
+            if (repoWfs) {
+              const updatedWfs = repoWfs.map((wf) => {
+                if (wf.lastRun && wf.lastRun.id === run.id) {
+                  return { ...wf, lastRun: { ...run } };
+                }
+                if (wf.name === run.name) {
+                  const existingLastRun = wf.lastRun;
+                  if (!existingLastRun || new Date(run.updatedAt) >= new Date(existingLastRun.updatedAt)) {
+                    return { ...wf, lastRun: { ...run } };
+                  }
+                }
+                return wf;
+              });
+              newMap.set(run.repoFullName, updatedWfs);
+            }
+            return { workflows: newMap };
+          });
         }
       }
     });
     return unsubscribe;
-  }, [subscribe, updateWorkflowRun, workflows, setWorkflows]);
+  }, [subscribe, updateWorkflowRun]);
 
   const displayRepo = selectedRepo || repositories[0]?.fullName;
   const currentWorkflows = displayRepo ? workflows.get(displayRepo) || [] : [];
@@ -389,19 +398,48 @@ const Workflows: React.FC = () => {
     setTriggeringId(workflow.id);
     setError('workflow-trigger', null);
 
+    const optimisticRun: WorkflowRun = {
+      id: Date.now(),
+      name: workflow.name,
+      status: 'queued',
+      conclusion: null,
+      htmlUrl: `https://github.com/${repoFullName}/actions`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const currentWfs = workflows.get(repoFullName) || [];
+    const optimisticWfs = currentWfs.map((wf) =>
+      wf.id === workflow.id ? { ...wf, lastRun: optimisticRun } : wf
+    );
+    setWorkflows(repoFullName, optimisticWfs);
+
     try {
       const [owner, name] = repoFullName.split('/');
-      await apiService.triggerWorkflow(owner, name, workflow.id, ref, inputs);
+      const result = await apiService.triggerWorkflow(owner, name, workflow.id, ref, inputs);
       setTriggerModal(null);
 
-      setTimeout(async () => {
-        const [o, n] = repoFullName.split('/');
-        const wfs = await apiService.getWorkflows(o, n);
-        setWorkflows(repoFullName, wfs);
-      }, 1000);
+      const newRun: WorkflowRun = {
+        id: result.id,
+        name: result.name,
+        status: result.status,
+        conclusion: result.conclusion,
+        htmlUrl: result.htmlUrl,
+        createdAt: result.createdAt,
+        updatedAt: result.updatedAt,
+      };
+
+      const updatedWfs = currentWfs.map((wf) =>
+        wf.id === workflow.id ? { ...wf, lastRun: newRun } : wf
+      );
+      setWorkflows(repoFullName, updatedWfs);
     } catch (error: any) {
       console.error('Failed to trigger workflow:', error);
       setError('workflow-trigger', error.message || '触发工作流失败');
+      const revertedWfs = currentWfs.map((wf) =>
+        wf.id === workflow.id ? { ...wf, lastRun: workflow.lastRun } : wf
+      );
+      setWorkflows(repoFullName, revertedWfs);
     } finally {
       setTriggeringId(null);
     }

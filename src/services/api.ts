@@ -101,11 +101,10 @@ export const apiService = {
     return handleResponse<DeploymentStats[]>(response);
   },
 
-  getSuccessRate: async (repo?: string, start?: string, end?: string): Promise<DeploymentStats[]> => {
+  getSuccessRate: async (repo?: string, period?: string): Promise<DeploymentStats[]> => {
     const params: Record<string, string> = {};
     if (repo) params.repo = repo;
-    if (start) params.start = start;
-    if (end) params.end = end;
+    if (period) params.period = period;
     const response = await api.get('/statistics/success-rate', { params });
     return handleResponse<DeploymentStats[]>(response);
   },

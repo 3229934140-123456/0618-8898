@@ -207,8 +207,8 @@ router.get('/statistics/deployments', (req: Request, res: Response<ApiResponse<a
 
 router.get('/statistics/success-rate', (req: Request, res: Response<ApiResponse<any>>) => {
   try {
-    const { repo, start, end } = req.query;
-    const stats = db.getDeploymentStats(repo as string);
+    const { repo, period } = req.query;
+    const stats = db.getDeploymentStats(repo as string, period as string);
 
     const result = stats.map(s => ({
       repoId: s.repoId,
@@ -235,8 +235,9 @@ router.post('/webhook/github', async (req: Request, res: Response) => {
     const secret = db.getConfig('webhook_secret') || '';
 
     if (secret && signature) {
-      const rawBody = JSON.stringify(req.body);
+      const rawBody = (req as any).rawBody || JSON.stringify(req.body);
       if (!verifySignature(rawBody, signature, secret)) {
+        console.warn(`[Webhook] Signature verification failed for ${event} (${deliveryId})`);
         return res.status(403).json({ error: 'Invalid signature' });
       }
     }
@@ -302,10 +303,11 @@ router.put('/config', (req: Request, res: Response<ApiResponse<any>>) => {
     }
     
     if (key === 'webhook_secret') {
-      console.log('[Config] Webhook secret updated, will take effect immediately');
+      console.log('[Config] Webhook secret updated, will take effect immediately for next webhook request');
     }
     
-    res.json({ success: true, data: { key, value } });
+    const freshValue = db.getConfig(key);
+    res.json({ success: true, data: { key, value: freshValue ?? value } });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
   }

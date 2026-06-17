@@ -47,16 +47,20 @@ export const broadcastEvent = (event: WSEvent, repoFullName?: string): void => {
 
 export const broadcastPRUpdate = (pr: PullRequest): void => {
   broadcastEvent({ type: 'pr:updated', data: pr }, pr.repoFullName);
+  io?.emit('pr:updated', pr);
 };
 
 export const broadcastPipelineUpdate = (pipeline: PipelineRun): void => {
   broadcastEvent({ type: 'pipeline:updated', data: pipeline }, pipeline.repoFullName);
+  io?.emit('pipeline:updated', pipeline);
 };
 
 export const broadcastWorkflowUpdate = (run: WorkflowRun & { repoFullName: string }): void => {
   broadcastEvent({ type: 'workflow:updated', data: run }, run.repoFullName);
+  io?.emit('workflow:updated', run);
 };
 
 export const broadcastDeploymentComplete = (stats: DeploymentStats): void => {
   broadcastEvent({ type: 'deployment:completed', data: stats }, stats.repoName);
+  io?.emit('deployment:completed', stats);
 };
