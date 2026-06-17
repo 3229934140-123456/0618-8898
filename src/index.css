@@ -1,0 +1,163 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0a1628;
+  --bg-secondary: #0f1e3d;
+  --bg-tertiary: #1e3a5f;
+  --bg-card: #112240;
+  --brand-primary: #3b82f6;
+  --brand-secondary: #60a5fa;
+  --status-success: #10b981;
+  --status-failure: #ef4444;
+  --status-running: #f59e0b;
+  --status-pending: #6b7280;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--brand-primary) var(--bg-secondary);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--brand-primary);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--brand-secondary);
+}
+
+body {
+  margin: 0;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  background-color: var(--bg-primary);
+  color: #e2e8f0;
+  min-height: 100vh;
+  background-image: 
+    linear-gradient(rgba(59, 130, 246, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 130, 246, 0.03) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+@layer components {
+  .card {
+    @apply bg-bg-card rounded-lg border border-bg-tertiary/50 shadow-card backdrop-blur-sm;
+    background: linear-gradient(135deg, rgba(17, 34, 64, 0.9) 0%, rgba(15, 30, 61, 0.9) 100%);
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-glow hover:-translate-y-1 hover:border-brand-primary/50;
+  }
+
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-bg-primary;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-primary text-white hover:bg-brand-secondary focus:ring-brand-primary;
+  }
+
+  .btn-success {
+    @apply btn bg-status-success text-white hover:bg-status-success/80 focus:ring-status-success;
+  }
+
+  .btn-danger {
+    @apply btn bg-status-failure text-white hover:bg-status-failure/80 focus:ring-status-failure;
+  }
+
+  .btn-outline {
+    @apply btn border border-bg-tertiary text-gray-300 hover:border-brand-primary hover:text-brand-primary focus:ring-brand-primary/30;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+
+  .status-success {
+    @apply status-badge bg-status-success/20 text-status-success;
+  }
+
+  .status-failure {
+    @apply status-badge bg-status-failure/20 text-status-failure;
+  }
+
+  .status-running {
+    @apply status-badge bg-status-running/20 text-status-running;
+  }
+
+  .status-pending {
+    @apply status-badge bg-status-pending/20 text-status-pending;
+  }
+
+  .status-skipped {
+    @apply status-badge bg-status-skipped/20 text-status-skipped;
+  }
+
+  .glow-border {
+    position: relative;
+  }
+
+  .glow-border::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, var(--brand-primary), transparent, var(--brand-primary));
+    -webkit-mask: 
+      linear-gradient(#fff 0 0) content-box, 
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .glow-border:hover::before {
+    opacity: 1;
+  }
+
+  .animate-progress {
+    background: linear-gradient(90deg, 
+      transparent 0%, 
+      rgba(59, 130, 246, 0.6) 50%, 
+      transparent 100%);
+    background-size: 200% 100%;
+    animation: flow 1.5s ease-in-out infinite;
+  }
+
+  .pulse-ring {
+    animation: pulse-ring 2s ease-out infinite;
+  }
+
+  @keyframes pulse-ring {
+    0% {
+      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+    }
+  }
+}
