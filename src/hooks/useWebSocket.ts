@@ -11,7 +11,7 @@ export const useWebSocket = (repoFullName?: string) => {
     setWsConnected,
   } = useDashboardStore();
 
-  const subscribedRef = useRef<string | null>(null);
+  const subscribedReposRef = useRef<Set<string>>(new Set());
   const [isConnected, setIsConnected] = useState(false);
   const listenersRef = useRef<Set<(event: WSEvent) => void>>(new Set());
 
@@ -31,24 +31,45 @@ export const useWebSocket = (repoFullName?: string) => {
   }, []);
 
   const subscribeToRepo = useCallback((repo: string) => {
-    if (subscribedRef.current && subscribedRef.current !== repo) {
-      wsService.unsubscribe(subscribedRef.current);
+    if (!subscribedReposRef.current.has(repo)) {
+      wsService.subscribe(repo);
+      subscribedReposRef.current.add(repo);
+      console.log(`[useWebSocket] Subscribed to ${repo}`);
     }
-    wsService.subscribe(repo);
-    subscribedRef.current = repo;
+  }, []);
+
+  const subscribeToAllRepos = useCallback((repos: string[]) => {
+    repos.forEach((repo) => {
+      if (!subscribedReposRef.current.has(repo)) {
+        wsService.subscribe(repo);
+        subscribedReposRef.current.add(repo);
+      }
+    });
+    console.log(`[useWebSocket] Subscribed to ${repos.length} repos: ${repos.join(', ')}`);
   }, []);
 
   const unsubscribeFromRepo = useCallback((repo: string) => {
     wsService.unsubscribe(repo);
-    if (subscribedRef.current === repo) {
-      subscribedRef.current = null;
-    }
+    subscribedReposRef.current.delete(repo);
+  }, []);
+
+  const unsubscribeFromAllRepos = useCallback(() => {
+    subscribedReposRef.current.forEach((repo) => {
+      wsService.unsubscribe(repo);
+    });
+    subscribedReposRef.current.clear();
   }, []);
 
   useEffect(() => {
     const handleConnectionStatus = (connected: boolean) => {
       setIsConnected(connected);
       setWsConnected(connected);
+      
+      if (connected) {
+        subscribedReposRef.current.forEach((repo) => {
+          wsService.subscribe(repo);
+        });
+      }
     };
 
     const handleEvent = (event: WSEvent) => {
@@ -56,14 +77,17 @@ export const useWebSocket = (repoFullName?: string) => {
     };
 
     const handlePRUpdate = (data: PullRequest) => {
+      console.log('[useWebSocket] PR updated:', data.number, data.repoFullName);
       updatePullRequest(data);
     };
 
     const handlePipelineUpdate = (data: PipelineRun) => {
+      console.log('[useWebSocket] Pipeline updated:', data.id, data.repoFullName);
       updatePipelineRun(data);
     };
 
     const handleWorkflowUpdate = (data: WorkflowRun & { repoFullName: string }) => {
+      console.log('[useWebSocket] Workflow updated:', data.id, data.repoFullName);
       updateWorkflowRun(data);
     };
 
@@ -85,22 +109,15 @@ export const useWebSocket = (repoFullName?: string) => {
       unsub4();
       unsub5();
       unsub6();
-
-      if (subscribedRef.current) {
-        wsService.unsubscribe(subscribedRef.current);
-      }
+      unsubscribeFromAllRepos();
     };
-  }, [updatePullRequest, updatePipelineRun, updateWorkflowRun, setWsConnected]);
+  }, [updatePullRequest, updatePipelineRun, updateWorkflowRun, setWsConnected, unsubscribeFromAllRepos]);
 
   useEffect(() => {
     if (repoFullName && wsService.isConnected()) {
-      if (subscribedRef.current && subscribedRef.current !== repoFullName) {
-        wsService.unsubscribe(subscribedRef.current);
-      }
-      wsService.subscribe(repoFullName);
-      subscribedRef.current = repoFullName;
+      subscribeToRepo(repoFullName);
     }
-  }, [repoFullName]);
+  }, [repoFullName, subscribeToRepo]);
 
   return {
     isConnected,
@@ -108,7 +125,9 @@ export const useWebSocket = (repoFullName?: string) => {
     disconnect,
     subscribe,
     subscribeToRepo,
+    subscribeToAllRepos,
     unsubscribeFromRepo,
+    unsubscribeFromAllRepos,
   };
 };
 

@@ -2,6 +2,13 @@ import { Router, Request, Response } from 'express';
 import db from '../db/database.js';
 import { verifySignature, processWebhook } from '../services/webhook.js';
 import { broadcastWorkflowUpdate } from '../services/websocket.js';
+import {
+  triggerWorkflowDispatch,
+  fetchWorkflows,
+  fetchLatestWorkflowRuns,
+  startWorkflowRunPolling,
+  reinitializeOctokit,
+} from '../services/github.js';
 import type { ApiResponse, WorkflowRun, DateRange } from '../../shared/types.js';
 
 const router = Router();
@@ -81,14 +88,26 @@ router.get('/repos/:owner/:name/coverage', (req: Request, res: Response<ApiRespo
   }
 });
 
-router.get('/repos/:owner/:name/workflows', (req: Request, res: Response<ApiResponse<any>>) => {
+router.get('/repos/:owner/:name/workflows', async (req: Request, res: Response<ApiResponse<any>>) => {
   try {
     const { owner, name } = req.params;
     const repoFullName = `${owner}/${name}`;
+    
+    const githubWorkflows = await fetchWorkflows(owner, name);
+    
+    if (githubWorkflows.length > 0) {
+      res.json({ success: true, data: githubWorkflows });
+      return;
+    }
+    
     const workflows = db.getWorkflows(repoFullName);
     res.json({ success: true, data: workflows });
   } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message });
+    console.error('[API] Failed to get workflows:', error);
+    const { owner, name } = req.params;
+    const repoFullName = `${owner}/${name}`;
+    const workflows = db.getWorkflows(repoFullName);
+    res.json({ success: true, data: workflows, warning: '使用模拟数据' });
   }
 });
 
@@ -108,6 +127,7 @@ router.post('/repos/:owner/:name/workflows/:id/dispatch', async (req: Request, r
     const { owner, name, id } = req.params;
     const { ref, inputs } = req.body;
     const repoFullName = `${owner}/${name}`;
+    const workflowId = parseInt(id);
 
     const repo = db.getRepositoryByFullName(repoFullName);
     if (!repo) {
@@ -115,23 +135,47 @@ router.post('/repos/:owner/:name/workflows/:id/dispatch', async (req: Request, r
     }
 
     const now = new Date();
-    const newRun: WorkflowRun & { repoFullName: string } = {
+    const tempRun: WorkflowRun & { repoFullName: string } = {
       id: db.getNextId(),
-      name: `Workflow ${id}`,
+      name: `Workflow ${workflowId}`,
       status: 'queued',
       conclusion: null,
-      htmlUrl: `https://github.com/${repoFullName}/actions/runs/${db.getNextId()}`,
+      htmlUrl: `https://github.com/${repoFullName}/actions`,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
       repoFullName
     };
 
-    db.upsertWorkflowRun(newRun);
-    broadcastWorkflowUpdate(newRun);
-
-    simulateWorkflowExecution(newRun);
-
-    res.json({ success: true, data: newRun });
+    try {
+      const triggered = await triggerWorkflowDispatch(owner, name, workflowId, ref, inputs);
+      
+      if (triggered) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const latestRuns = await fetchLatestWorkflowRuns(owner, name);
+        
+        if (latestRuns.length > 0) {
+          const newRun = latestRuns[0];
+          db.upsertWorkflowRun(newRun);
+          broadcastWorkflowUpdate(newRun);
+          
+          startWorkflowRunPolling(owner, name, newRun.id);
+          
+          res.json({ success: true, data: newRun });
+          return;
+        }
+      }
+      
+      db.upsertWorkflowRun(tempRun);
+      broadcastWorkflowUpdate(tempRun);
+      simulateWorkflowExecution(tempRun);
+      res.json({ success: true, data: tempRun });
+    } catch (githubError: any) {
+      console.log('[GitHub] API call failed, falling back to simulation:', githubError.message);
+      db.upsertWorkflowRun(tempRun);
+      broadcastWorkflowUpdate(tempRun);
+      simulateWorkflowExecution(tempRun);
+      res.json({ success: true, data: tempRun, warning: 'GitHub API未配置，使用模拟模式' });
+    }
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
   }
@@ -251,6 +295,16 @@ router.put('/config', (req: Request, res: Response<ApiResponse<any>>) => {
   try {
     const { key, value } = req.body;
     db.setConfig(key, value);
+    
+    if (key === 'github_token') {
+      reinitializeOctokit();
+      console.log('[Config] GitHub token updated, Octokit reinitialized');
+    }
+    
+    if (key === 'webhook_secret') {
+      console.log('[Config] Webhook secret updated, will take effect immediately');
+    }
+    
     res.json({ success: true, data: { key, value } });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });

@@ -59,7 +59,8 @@ const Settings: React.FC = () => {
 
     try {
       await apiService.updateConfig(key, editValue);
-      setConfig((prev) => ({ ...prev, [key]: editValue }));
+      const freshConfig = await apiService.getConfig();
+      setConfig(freshConfig);
       setEditingKey(null);
       setSaveSuccess(key);
       setTimeout(() => setSaveSuccess(null), 3000);
@@ -94,7 +95,7 @@ const Settings: React.FC = () => {
   const configItems: ConfigItem[] = [
     {
       key: 'github_token',
-      value: config.github_token || 'ghp_xxxxxxxxxxxxxxxxxxxx',
+      value: config.github_token ?? '',
       label: 'GitHub Token',
       description: '用于访问GitHub API的个人访问令牌',
       icon: <Key className="w-5 h-5" />,
@@ -102,7 +103,7 @@ const Settings: React.FC = () => {
     },
     {
       key: 'github_webhook_secret',
-      value: config.github_webhook_secret || 'your-webhook-secret-here',
+      value: config.github_webhook_secret ?? '',
       label: 'Webhook Secret',
       description: '用于验证GitHub Webhook请求的密钥',
       icon: <Webhook className="w-5 h-5" />,
@@ -110,28 +111,28 @@ const Settings: React.FC = () => {
     },
     {
       key: 'webhook_url',
-      value: config.webhook_url || 'https://your-domain.com/api/webhook/github',
+      value: config.webhook_url ?? '',
       label: 'Webhook URL',
       description: 'GitHub Webhook的接收地址',
       icon: <ExternalLink className="w-5 h-5" />,
     },
     {
       key: 'api_base_url',
-      value: config.api_base_url || 'http://localhost:3001/api',
+      value: config.api_base_url ?? '',
       label: 'API Base URL',
       description: '后端API服务的基础地址',
       icon: <Database className="w-5 h-5" />,
     },
     {
       key: 'ws_url',
-      value: config.ws_url || 'ws://localhost:3001',
+      value: config.ws_url ?? '',
       label: 'WebSocket URL',
       description: 'WebSocket实时通信服务地址',
       icon: <Bell className="w-5 h-5" />,
     },
     {
       key: 'target_coverage',
-      value: config.target_coverage || '80',
+      value: config.target_coverage ?? '80',
       label: '目标覆盖率',
       description: '测试覆盖率目标值（百分比）',
       icon: <Monitor className="w-5 h-5" />,
@@ -231,22 +232,23 @@ const Settings: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <code className="flex-1 bg-bg-tertiary/50 rounded-lg px-4 py-2 text-gray-300 font-mono text-sm">
                           {item.sensitive
-                            ? '••••••••••••••••'
-                            : item.value}
+                            ? (item.value ? '••••••••••••••••' : <span className="text-gray-500 italic">未配置</span>)
+                            : (item.value || <span className="text-gray-500 italic">未配置</span>)}
                         </code>
                         <button
-                          onClick={() => handleCopy(item.key, item.value)}
+                          onClick={() => handleCopy(item.key, config[item.key] || '')}
                           className="p-2 rounded-lg hover:bg-bg-tertiary/50 transition-colors text-gray-400 hover:text-white"
                           title="复制"
+                          disabled={!config[item.key]}
                         >
                           {copiedKey === item.key ? (
                             <CheckCircle2 className="w-4 h-4 text-status-success" />
                           ) : (
-                            <Copy className="w-4 h-4" />
+                            <Copy className={cn('w-4 h-4', !config[item.key] && 'opacity-30')} />
                           )}
                         </button>
                         <button
-                          onClick={() => handleEdit(item.key, item.value)}
+                          onClick={() => handleEdit(item.key, config[item.key] || '')}
                           className="p-2 rounded-lg hover:bg-bg-tertiary/50 transition-colors text-gray-400 hover:text-white"
                           title="编辑"
                         >

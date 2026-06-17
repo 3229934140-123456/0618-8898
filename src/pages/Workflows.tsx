@@ -317,7 +317,7 @@ const Workflows: React.FC = () => {
     getError,
   } = useDashboardStore();
 
-  const { subscribe } = useWebSocket();
+  const { subscribe, subscribeToAllRepos } = useWebSocket();
   const [triggerModal, setTriggerModal] = useState<{
     workflow: Workflow;
     repoFullName: string;
@@ -347,13 +347,35 @@ const Workflows: React.FC = () => {
   }, [setRepositories, setWorkflows, setLoading]);
 
   useEffect(() => {
+    if (repositories.length > 0) {
+      const repoFullNames = repositories.map((r) => r.fullName);
+      subscribeToAllRepos(repoFullNames);
+    }
+  }, [repositories, subscribeToAllRepos]);
+
+  useEffect(() => {
     const unsubscribe = subscribe((event) => {
+      console.log('[Workflows] Received event:', event.type, event.data);
       if (event.type === 'workflow:updated') {
         updateWorkflowRun(event.data);
+        
+        const run = event.data;
+        if (run.repoFullName) {
+          const currentWfs = workflows.get(run.repoFullName);
+          if (currentWfs) {
+            const updatedWfs = currentWfs.map((wf) => {
+              if (wf.lastRun && wf.lastRun.id === run.id) {
+                return { ...wf, lastRun: run };
+              }
+              return wf;
+            });
+            setWorkflows(run.repoFullName, updatedWfs);
+          }
+        }
       }
     });
     return unsubscribe;
-  }, [subscribe, updateWorkflowRun]);
+  }, [subscribe, updateWorkflowRun, workflows, setWorkflows]);
 
   const displayRepo = selectedRepo || repositories[0]?.fullName;
   const currentWorkflows = displayRepo ? workflows.get(displayRepo) || [] : [];

@@ -222,14 +222,137 @@ class InMemoryDatabase {
   }
 
   getDeploymentStats(repoFullName?: string, period?: string): DeploymentStats[] {
-    let stats = mockDeploymentStats;
-    if (repoFullName) {
-      stats = stats.filter(s => s.repoName === repoFullName);
+    const now = new Date('2026-06-18');
+    const result: DeploymentStats[] = [];
+    
+    const targetRepos = repoFullName 
+      ? this.repositories.filter(r => r.fullName === repoFullName)
+      : this.repositories;
+
+    const generateDailyStats = (days: number, labelPrefix: string) => {
+      for (let i = days - 1; i >= 0; i--) {
+        const date = new Date(now);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        
+        targetRepos.forEach(repo => {
+          const deploymentCount = Math.floor(Math.random() * 8) + 2;
+          const failureCount = Math.floor(deploymentCount * (Math.random() * 0.2 + 0.05));
+          const successCount = deploymentCount - failureCount;
+          
+          result.push({
+            repoId: repo.id,
+            repoName: repo.fullName,
+            period: dateStr,
+            deploymentCount,
+            successCount,
+            failureCount,
+            successRate: Math.round((successCount / deploymentCount) * 10000) / 100,
+            averageDurationSeconds: Math.floor(Math.random() * 300) + 120
+          });
+        });
+      }
+    };
+
+    const generateWeeklyStats = (weeks: number) => {
+      for (let i = weeks - 1; i >= 0; i--) {
+        const weekStart = new Date(now);
+        weekStart.setDate(weekStart.getDate() - i * 7);
+        const weekNum = Math.ceil((weekStart.getDate() + new Date(weekStart.getFullYear(), weekStart.getMonth(), 1).getDay()) / 7);
+        const periodStr = `${weekStart.getFullYear()}-W${weekNum.toString().padStart(2, '0')}`;
+        
+        targetRepos.forEach(repo => {
+          const deploymentCount = Math.floor(Math.random() * 30) + 15;
+          const failureCount = Math.floor(deploymentCount * (Math.random() * 0.2 + 0.05));
+          const successCount = deploymentCount - failureCount;
+          
+          result.push({
+            repoId: repo.id,
+            repoName: repo.fullName,
+            period: periodStr,
+            deploymentCount,
+            successCount,
+            failureCount,
+            successRate: Math.round((successCount / deploymentCount) * 10000) / 100,
+            averageDurationSeconds: Math.floor(Math.random() * 300) + 120
+          });
+        });
+      }
+    };
+
+    const generateMonthlyStats = (months: number) => {
+      for (let i = months - 1; i >= 0; i--) {
+        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const periodStr = `${monthDate.getFullYear()}-${(monthDate.getMonth() + 1).toString().padStart(2, '0')}`;
+        
+        targetRepos.forEach(repo => {
+          const deploymentCount = Math.floor(Math.random() * 80) + 40;
+          const failureCount = Math.floor(deploymentCount * (Math.random() * 0.2 + 0.05));
+          const successCount = deploymentCount - failureCount;
+          
+          result.push({
+            repoId: repo.id,
+            repoName: repo.fullName,
+            period: periodStr,
+            deploymentCount,
+            successCount,
+            failureCount,
+            successRate: Math.round((successCount / deploymentCount) * 10000) / 100,
+            averageDurationSeconds: Math.floor(Math.random() * 300) + 120
+          });
+        });
+      }
+    };
+
+    const generateQuarterlyStats = (quarters: number) => {
+      for (let i = quarters - 1; i >= 0; i--) {
+        const currentQuarter = Math.floor(now.getMonth() / 3) - i;
+        const year = now.getFullYear() + Math.floor(currentQuarter / 4);
+        const q = ((currentQuarter % 4) + 4) % 4 + 1;
+        const periodStr = `${year}-Q${q}`;
+        
+        targetRepos.forEach(repo => {
+          const deploymentCount = Math.floor(Math.random() * 200) + 100;
+          const failureCount = Math.floor(deploymentCount * (Math.random() * 0.2 + 0.05));
+          const successCount = deploymentCount - failureCount;
+          
+          result.push({
+            repoId: repo.id,
+            repoName: repo.fullName,
+            period: periodStr,
+            deploymentCount,
+            successCount,
+            failureCount,
+            successRate: Math.round((successCount / deploymentCount) * 10000) / 100,
+            averageDurationSeconds: Math.floor(Math.random() * 300) + 120
+          });
+        });
+      }
+    };
+
+    switch (period) {
+      case 'week':
+        generateDailyStats(7, 'day');
+        break;
+      case 'month':
+        generateDailyStats(30, 'day');
+        generateWeeklyStats(4);
+        break;
+      case 'quarter':
+        generateWeeklyStats(13);
+        generateMonthlyStats(3);
+        break;
+      case 'year':
+        generateMonthlyStats(12);
+        generateQuarterlyStats(4);
+        break;
+      default:
+        generateDailyStats(7, 'day');
+        generateWeeklyStats(4);
+        generateMonthlyStats(3);
     }
-    if (period) {
-      stats = stats.filter(s => s.period === period);
-    }
-    return stats;
+
+    return result;
   }
 
   getConfig(key: string): string | undefined {

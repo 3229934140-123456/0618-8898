@@ -328,7 +328,7 @@ const Pipeline: React.FC = () => {
     isLoading,
   } = useDashboardStore();
 
-  const { subscribe } = useWebSocket();
+  const { subscribe, subscribeToAllRepos } = useWebSocket();
   const [expandedRuns, setExpandedRuns] = useState<Set<number>>(new Set());
 
   useEffect(() => {
@@ -352,6 +352,13 @@ const Pipeline: React.FC = () => {
 
     loadData();
   }, [setRepositories, setPipelineRuns, setLoading]);
+
+  useEffect(() => {
+    if (repositories.length > 0) {
+      const repoFullNames = repositories.map((r) => r.fullName);
+      subscribeToAllRepos(repoFullNames);
+    }
+  }, [repositories, subscribeToAllRepos]);
 
   useEffect(() => {
     const unsubscribe = subscribe((event) => {

@@ -91,6 +91,7 @@ const Statistics: React.FC = () => {
     deploymentStats,
     successRateStats,
     selectedRepo,
+    setRepositories,
     setDeploymentStats,
     setSuccessRateStats,
     setSelectedRepo,
@@ -100,6 +101,18 @@ const Statistics: React.FC = () => {
 
   const [period, setPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('week');
   const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
+
+  useEffect(() => {
+    const loadRepos = async () => {
+      try {
+        const repos = await apiService.getRepositories();
+        setRepositories(repos);
+      } catch (error) {
+        console.error('Failed to load repositories:', error);
+      }
+    };
+    loadRepos();
+  }, [setRepositories]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -118,8 +131,10 @@ const Statistics: React.FC = () => {
       }
     };
 
-    loadData();
-  }, [selectedRepo, period, setDeploymentStats, setSuccessRateStats, setLoading]);
+    if (repositories.length > 0) {
+      loadData();
+    }
+  }, [selectedRepo, period, repositories.length, setDeploymentStats, setSuccessRateStats, setLoading]);
 
   const dailyStats = useMemo(() => {
     return deploymentStats.filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s.period));

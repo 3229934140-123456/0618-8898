@@ -33,10 +33,17 @@ const Home: React.FC = () => {
     setError,
   } = useDashboardStore();
 
+  const { subscribeToAllRepos, subscribe } = useWebSocket();
+
   const [expandedRepos, setExpandedRepos] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
 
-  useWebSocket();
+  useEffect(() => {
+    const unsubscribe = subscribe((event) => {
+      console.log('[Home] Received WebSocket event:', event.type);
+    });
+    return unsubscribe;
+  }, [subscribe]);
 
   useEffect(() => {
     loadRepositories();
@@ -44,12 +51,15 @@ const Home: React.FC = () => {
 
   useEffect(() => {
     if (repositories.length > 0) {
+      const repoFullNames = repositories.map((r) => r.fullName);
+      subscribeToAllRepos(repoFullNames);
+      
       repositories.forEach((repo) => {
         loadPullRequests(repo.owner, repo.name);
       });
       setExpandedRepos(new Set(repositories.map((r) => r.fullName)));
     }
-  }, [repositories]);
+  }, [repositories, subscribeToAllRepos]);
 
   const loadRepositories = async () => {
     try {
